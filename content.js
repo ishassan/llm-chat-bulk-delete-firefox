@@ -16,6 +16,7 @@
     'a[href*="chatgpt.com/c/"]',
     'a[href*="chat.openai.com/c/"]'
   ].join(",");
+  const API_DELETE_CONCURRENCY = 6;
 
   const state = {
     selecting: false,
@@ -23,6 +24,7 @@
     selected: new Map(),
     lastSelectedId: null,
     accessToken: null,
+    accessTokenPromise: null,
     observer: null,
     refreshTimer: null,
     panel: null
@@ -483,27 +485,54 @@
 
     let deleted = 0;
     let deletedCurrentChat = false;
+    const apiFailures = [];
     const failed = [];
     const currentId = getConversationId(window.location.href);
+    const apiConcurrency = Math.min(API_DELETE_CONCURRENCY, items.length);
 
-    for (const item of items) {
-      setStatus(`Deleting ${deleted + failed.length + 1}/${items.length}: ${truncate(item.title, 54)}`);
-
-      try {
-        await deleteConversation(item);
-        deleted += 1;
-        state.selected.delete(item.id);
-        markConversationDeleted(item.id);
-        if (item.id === currentId) {
-          deletedCurrentChat = true;
-        }
-      } catch (error) {
-        failed.push({ item, error });
+    const markDeleted = (item) => {
+      deleted += 1;
+      state.selected.delete(item.id);
+      markConversationDeleted(item.id);
+      if (item.id === currentId) {
+        deletedCurrentChat = true;
       }
-
       syncDecorationsForId(item.id);
       updatePanel();
-      await sleep(250);
+    };
+
+    let apiFinished = 0;
+    setStatus(`Fast deleting 0/${items.length} with ${apiConcurrency} parallel request${apiConcurrency === 1 ? "" : "s"}...`);
+
+    await runWithConcurrency(items, apiConcurrency, async (item, index) => {
+      try {
+        await deleteViaApi(item.id);
+        markDeleted(item);
+      } catch (error) {
+        apiFailures.push({ item, error, index });
+      }
+
+      apiFinished += 1;
+      setStatus(`Fast deleting ${apiFinished}/${items.length}; ${apiFailures.length} queued for UI retry.`);
+    });
+
+    apiFailures.sort((first, second) => first.index - second.index);
+
+    for (let index = 0; index < apiFailures.length; index += 1) {
+      const { item, error: apiError } = apiFailures[index];
+      setStatus(`Retrying through UI ${index + 1}/${apiFailures.length}: ${truncate(item.title, 54)}`);
+
+      try {
+        await deleteViaVisibleUi(item.id);
+        markDeleted(item);
+      } catch (uiError) {
+        failed.push({
+          item,
+          error: new Error(`API ${apiError.message}; UI ${uiError.message}`)
+        });
+      }
+
+      await sleep(150);
     }
 
     state.deleting = false;
@@ -522,20 +551,6 @@
       window.setTimeout(() => {
         window.location.assign(window.location.origin + "/");
       }, 700);
-    }
-  }
-
-  async function deleteConversation(item) {
-    try {
-      await deleteViaApi(item.id);
-      return;
-    } catch (apiError) {
-      try {
-        await deleteViaVisibleUi(item.id);
-        return;
-      } catch (uiError) {
-        throw new Error(`API ${apiError.message}; UI ${uiError.message}`);
-      }
     }
   }
 
@@ -576,10 +591,32 @@
   }
 
   async function getAccessToken(forceRefresh) {
+    if (forceRefresh) {
+      state.accessToken = null;
+      state.accessTokenPromise = null;
+    }
+
     if (state.accessToken && !forceRefresh) {
       return state.accessToken;
     }
 
+    if (state.accessTokenPromise && !forceRefresh) {
+      return state.accessTokenPromise;
+    }
+
+    const tokenPromise = fetchAccessToken();
+    state.accessTokenPromise = tokenPromise;
+
+    try {
+      return await tokenPromise;
+    } finally {
+      if (state.accessTokenPromise === tokenPromise) {
+        state.accessTokenPromise = null;
+      }
+    }
+  }
+
+  async function fetchAccessToken() {
     try {
       const response = await window.fetch(`${window.location.origin}/api/auth/session`, {
         credentials: "include",
@@ -740,6 +777,20 @@
         view: window
       }));
     }
+  }
+
+  async function runWithConcurrency(items, concurrency, task) {
+    let nextIndex = 0;
+    const workerCount = Math.min(Math.max(concurrency, 1), items.length);
+    const workers = Array.from({ length: workerCount }, async () => {
+      while (nextIndex < items.length) {
+        const index = nextIndex;
+        nextIndex += 1;
+        await task(items[index], index);
+      }
+    });
+
+    await Promise.all(workers);
   }
 
   async function waitFor(callback, timeoutMs) {

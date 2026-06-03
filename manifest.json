@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "ChatGPT Bulk Chat Delete",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Select multiple ChatGPT conversations in the sidebar and delete them in one confirmed bulk action.",
   "host_permissions": [
     "https://chatgpt.com/*",
