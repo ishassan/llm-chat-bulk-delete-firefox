@@ -4,11 +4,13 @@ This is a local Firefox 140+ WebExtension that adds a small "Bulk delete" panel 
 
 ## Install for local use
 
-1. Unzip `artifacts/chatgpt-bulk-delete-firefox.zip`.
+1. Download `artifacts/chatgpt-bulk-delete-firefox.zip`.
 2. Open Firefox and go to `about:debugging#/runtime/this-firefox`.
 3. Click `Load Temporary Add-on`.
-4. Select the unzipped extension's `manifest.json`.
+4. Select `chatgpt-bulk-delete-firefox.zip`.
 5. Open `https://chatgpt.com/` or `https://chat.openai.com/`.
+
+For development, you can also clone the repo and select the local `manifest.json` from the repo root instead of selecting the zip.
 
 Temporary add-ons are removed when Firefox restarts. For permanent use in regular Firefox, submit/sign the add-on through Mozilla Add-ons or use a Firefox build/profile that allows unsigned extensions.
 
