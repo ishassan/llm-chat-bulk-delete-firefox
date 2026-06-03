@@ -18,8 +18,9 @@ Temporary add-ons are removed when Firefox restarts. For permanent use in regula
 
 1. Click `Select chats` in the bottom-right panel.
 2. Check the chats you want to delete in the ChatGPT sidebar.
-3. Optionally click `Select shown` to select all currently rendered sidebar chats.
-4. Click `Delete` and confirm the browser prompt.
+3. Click `Select all` to select every currently loaded sidebar chat.
+4. Select a chat, then Shift-select another chat to select the full loaded range between them.
+5. Click `Delete` and confirm the browser prompt.
 
 ## Notes
 

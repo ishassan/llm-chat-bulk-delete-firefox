@@ -21,6 +21,7 @@
     selecting: false,
     deleting: false,
     selected: new Map(),
+    lastSelectedId: null,
     accessToken: null,
     observer: null,
     refreshTimer: null,
@@ -71,7 +72,7 @@
 
     actions.append(
       makePanelButton("toggle", "Select chats", `${EXT}-primary`),
-      makePanelButton("select-shown", "Select shown", "", true),
+      makePanelButton("select-all", "Select all", "", true),
       makePanelButton("clear", "Clear", "", true),
       makePanelButton("delete", "Delete", `${EXT}-danger`, true)
     );
@@ -123,8 +124,8 @@
       return;
     }
 
-    if (action === "select-shown") {
-      selectShownChats();
+    if (action === "select-all") {
+      selectAllLoadedChats();
       return;
     }
 
@@ -155,13 +156,20 @@
 
   function clearSelection() {
     state.selected.clear();
+    state.lastSelectedId = null;
     syncAllDecorations();
     updatePanel();
   }
 
-  function selectShownChats() {
+  function selectAllLoadedChats() {
+    const links = findChatLinks();
+    if (links.length === 0) {
+      setStatus("No loaded chats found.");
+      return;
+    }
+
     let added = 0;
-    for (const link of findChatLinks()) {
+    for (const link of links) {
       const id = getConversationId(link);
       if (id && !state.selected.has(id)) {
         state.selected.set(id, getConversationData(link, id));
@@ -169,9 +177,10 @@
       }
     }
 
+    state.lastSelectedId = getConversationId(links[links.length - 1]);
     syncAllDecorations();
     updatePanel();
-    setStatus(added > 0 ? `Selected ${added} shown chat${added === 1 ? "" : "s"}.` : "No new shown chats found.");
+    setStatus(added > 0 ? `Selected ${added} loaded chat${added === 1 ? "" : "s"}.` : "All loaded chats are already selected.");
   }
 
   function scheduleRefresh() {
@@ -310,13 +319,13 @@
     selector.addEventListener("click", (event) => {
       event.preventDefault();
       event.stopPropagation();
-      toggleSelection(id, link);
+      selectChat(id, link, event.shiftKey);
     });
     selector.addEventListener("keydown", (event) => {
       if (event.key === " " || event.key === "Enter") {
         event.preventDefault();
         event.stopPropagation();
-        toggleSelection(id, link);
+        selectChat(id, link, event.shiftKey);
       }
     });
 
@@ -331,6 +340,17 @@
     event.stopPropagation();
   }
 
+  function selectChat(id, link, extendRange) {
+    if (extendRange && state.lastSelectedId && state.lastSelectedId !== id) {
+      selectRange(state.lastSelectedId, id);
+      state.lastSelectedId = id;
+      return;
+    }
+
+    toggleSelection(id, link);
+    state.lastSelectedId = id;
+  }
+
   function toggleSelection(id, link) {
     if (state.selected.has(id)) {
       state.selected.delete(id);
@@ -340,6 +360,43 @@
 
     syncDecorationsForId(id);
     updatePanel();
+  }
+
+  function selectRange(fromId, toId) {
+    const links = findChatLinks();
+    const fromIndex = links.findIndex((link) => getConversationId(link) === fromId);
+    const toIndex = links.findIndex((link) => getConversationId(link) === toId);
+
+    if (fromIndex === -1 || toIndex === -1) {
+      const targetLink = links.find((link) => getConversationId(link) === toId);
+      if (targetLink) {
+        state.selected.set(toId, getConversationData(targetLink, toId));
+        syncDecorationsForId(toId);
+      }
+      updatePanel();
+      setStatus("Range selection needs both chats to be loaded in the sidebar.");
+      return;
+    }
+
+    const start = Math.min(fromIndex, toIndex);
+    const end = Math.max(fromIndex, toIndex);
+    let added = 0;
+
+    for (const link of links.slice(start, end + 1)) {
+      const id = getConversationId(link);
+      if (!id) {
+        continue;
+      }
+
+      if (!state.selected.has(id)) {
+        added += 1;
+      }
+      state.selected.set(id, getConversationData(link, id));
+    }
+
+    syncAllDecorations();
+    updatePanel();
+    setStatus(`Selected range of ${end - start + 1} chat${end === start ? "" : "s"}${added > 0 ? ` (${added} new)` : ""}.`);
   }
 
   function syncDecorationsForId(id) {
@@ -386,17 +443,17 @@
 
     const countElement = panel.querySelector(`[data-${EXT}-count]`);
     const toggleButton = panel.querySelector(`[data-${EXT}-action="toggle"]`);
-    const selectShownButton = panel.querySelector(`[data-${EXT}-action="select-shown"]`);
+    const selectAllButton = panel.querySelector(`[data-${EXT}-action="select-all"]`);
     const clearButton = panel.querySelector(`[data-${EXT}-action="clear"]`);
     const deleteButton = panel.querySelector(`[data-${EXT}-action="delete"]`);
 
     countElement.textContent = `${count} selected`;
     toggleButton.textContent = selecting ? "Cancel" : "Select chats";
     toggleButton.disabled = deleting;
-    selectShownButton.hidden = !selecting;
+    selectAllButton.hidden = !selecting;
     clearButton.hidden = !selecting;
     deleteButton.hidden = !selecting;
-    selectShownButton.disabled = deleting;
+    selectAllButton.disabled = deleting;
     clearButton.disabled = deleting || count === 0;
     deleteButton.disabled = deleting || count === 0;
   }
