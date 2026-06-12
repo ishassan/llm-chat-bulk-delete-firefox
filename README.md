@@ -1,4 +1,4 @@
-# AI Chat Bulk Delete for Firefox
+# LLM Chat Bulk Delete for Firefox
 
 This is a local Firefox 140+ WebExtension that adds a small "Bulk delete" panel to ChatGPT, Claude Web, and Claude Code on web. It lets you select multiple visible chats or sessions, confirm once, and delete the selected items.
 
