@@ -1,0 +1,10 @@
+{
+  "name": "llm-chat-bulk-delete-firefox",
+  "private": true,
+  "scripts": {
+    "test": "node --test tests/*.test.mjs"
+  },
+  "devDependencies": {
+    "jsdom": "^24.1.3"
+  }
+}

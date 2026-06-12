@@ -1,11 +1,12 @@
 {
   "manifest_version": 3,
-  "name": "ChatGPT Bulk Chat Delete",
-  "version": "0.2.0",
-  "description": "Select multiple ChatGPT conversations in the sidebar and delete them in one confirmed bulk action.",
+  "name": "AI Chat Bulk Delete",
+  "version": "0.3.0",
+  "description": "Select multiple ChatGPT, Claude Web, and Claude Code chats and delete them in one confirmed bulk action.",
   "host_permissions": [
     "https://chatgpt.com/*",
-    "https://chat.openai.com/*"
+    "https://chat.openai.com/*",
+    "https://claude.ai/*"
   ],
   "content_scripts": [
     {
@@ -20,11 +21,24 @@
         "content.css"
       ],
       "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://claude.ai/*"
+      ],
+      "js": [
+        "src/claude/core.js",
+        "src/claude/content.js"
+      ],
+      "css": [
+        "src/claude/content.css"
+      ],
+      "run_at": "document_idle"
     }
   ],
   "browser_specific_settings": {
     "gecko": {
-      "id": "chatgpt-bulk-delete@codex.local",
+      "id": "llm-chat-bulk-delete@codex.local",
       "data_collection_permissions": {
         "required": [
           "none"
