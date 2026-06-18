@@ -640,6 +640,151 @@ test("content script decorates fresh Claude Code recents rows before menu contro
   }
 });
 
+test("content script decorates short Claude Code recents titles", async () => {
+  const instance = new JSDOM(`
+    <body>
+      <aside aria-label="Sidebar">
+        <button>New session</button>
+        <section aria-label="Recents">
+          <div data-session-row="third"><span>T3</span></div>
+          <div data-session-row="second"><span>T2</span></div>
+          <div data-session-row="first"><span>T1</span></div>
+          <div data-session-row="long"><span>Optimize large folder for Google Drive</span></div>
+        </section>
+      </aside>
+    </body>
+  `, {
+    pretendToBeVisual: true,
+    runScripts: "dangerously",
+    url: "https://claude.ai/code"
+  });
+
+  try {
+    instance.window.eval(await loadScript("src/claude/core.js"));
+    instance.window.eval(await loadScript("src/claude/content.js"));
+    await startSelecting(instance.window);
+    await waitFor(instance.window, () => instance.window.document.querySelectorAll(".cbd-selector").length === 4);
+
+    const selectors = Array.from(instance.window.document.querySelectorAll(".cbd-selector"));
+    assert.deepEqual(
+      selectors.map((selector) => selector.getAttribute("aria-label")),
+      [
+        "Select T3",
+        "Select T2",
+        "Select T1",
+        "Select Optimize large folder for Google Drive"
+      ]
+    );
+  } finally {
+    instance.window.close();
+  }
+});
+
+test("content script skips Claude Code recents group headers", async () => {
+  const instance = new JSDOM(`
+    <body>
+      <aside aria-label="Sidebar">
+        <button>New session</button>
+        <section aria-label="Recents">
+          <div>Working</div>
+          <div data-session-row="working"><span>T0</span></div>
+          <div>Needs input</div>
+          <div data-session-row="third"><span>T3</span></div>
+          <div data-session-row="second"><span>T2</span></div>
+          <div data-session-row="first"><span>T1</span></div>
+          <div>Completed</div>
+          <div data-session-row="long"><span>Optimize large folder for Google Drive</span></div>
+        </section>
+      </aside>
+    </body>
+  `, {
+    pretendToBeVisual: true,
+    runScripts: "dangerously",
+    url: "https://claude.ai/code"
+  });
+
+  try {
+    instance.window.eval(await loadScript("src/claude/core.js"));
+    instance.window.eval(await loadScript("src/claude/content.js"));
+    await startSelecting(instance.window);
+    await waitFor(instance.window, () => instance.window.document.querySelectorAll(".cbd-selector").length >= 4);
+
+    const selectors = Array.from(instance.window.document.querySelectorAll(".cbd-selector"));
+    assert.deepEqual(
+      selectors.map((selector) => selector.getAttribute("aria-label")),
+      [
+        "Select T0",
+        "Select T3",
+        "Select T2",
+        "Select T1",
+        "Select Optimize large folder for Google Drive"
+      ]
+    );
+  } finally {
+    instance.window.close();
+  }
+});
+
+test("content script does not decorate emptied Claude Code groups after delete", async () => {
+  const instance = new JSDOM(`
+    <body>
+      <aside aria-label="Sidebar">
+        <button>New session</button>
+        <section aria-label="Recents">
+          <div data-group="needs-input">
+            <div>Needs input</div>
+            <div data-session-id="session_t3" data-session-row="third"><span>T3</span></div>
+            <div data-session-id="session_t2" data-session-row="second"><span>T2</span></div>
+            <div data-session-id="session_t1" data-session-row="first"><span>T1</span></div>
+          </div>
+          <div data-group="completed">
+            <div>Completed</div>
+            <div data-session-row="long"><span>Optimize large folder for Google Drive</span></div>
+          </div>
+        </section>
+      </aside>
+    </body>
+  `, {
+    pretendToBeVisual: true,
+    runScripts: "dangerously",
+    url: "https://claude.ai/code"
+  });
+
+  try {
+    const { document, MouseEvent } = instance.window;
+    instance.window.confirm = () => true;
+    instance.window.fetch = async (_url, init = {}) => {
+      if (init.method === "DELETE") {
+        return { ok: true, status: 204 };
+      }
+      return { ok: false, status: 500 };
+    };
+
+    instance.window.eval(await loadScript("src/claude/core.js"));
+    instance.window.eval(await loadScript("src/claude/content.js"));
+    await startSelecting(instance.window);
+    await waitFor(instance.window, () => document.querySelectorAll(".cbd-selector").length === 4);
+
+    const selectors = document.querySelectorAll(".cbd-selector");
+    selectors[0].dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    selectors[2].dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, shiftKey: true }));
+    document.querySelector("[data-cbd-action='delete']").dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+
+    await waitFor(instance.window, () => document.querySelector(".cbd-status")?.textContent === "Deleted 3 chats.", 5000);
+    await waitFor(instance.window, () => document.querySelectorAll("[data-session-id]").length === 0, 1000);
+    await new Promise((resolve) => instance.window.setTimeout(resolve, 250));
+
+    const remainingSelectors = Array.from(document.querySelectorAll(".cbd-selector"));
+    assert.deepEqual(
+      remainingSelectors.map((selector) => selector.getAttribute("aria-label")),
+      ["Select Optimize large folder for Google Drive"]
+    );
+    assert.equal(document.querySelector("[data-group='needs-input'] .cbd-selector"), null);
+  } finally {
+    instance.window.close();
+  }
+});
+
 test("content script toggles Claude Code selectors when the row receives the checkbox click", async () => {
   const instance = new JSDOM(`
     <body>

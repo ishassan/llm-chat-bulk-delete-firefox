@@ -161,7 +161,7 @@
   }
 
   function scheduleRefresh() {
-    if (!state.selecting || state.refreshTimer) {
+    if (!state.selecting || state.deleting || state.refreshTimer) {
       return;
     }
 
@@ -172,7 +172,7 @@
   }
 
   function refreshDecorations() {
-    if (!state.selecting || !document.body) {
+    if (!state.selecting || state.deleting || !document.body) {
       return;
     }
 
@@ -448,11 +448,25 @@
 
   function isLikelyCodeSessionTitle(title) {
     const normalized = normalizeText(title);
-    return isLikelyFallbackTitle(normalized) &&
+    if (isCodeSessionGroupHeader(normalized)) {
+      return false;
+    }
+
+    const titleShapeLooksValid = isLikelyFallbackTitle(normalized) || isShortCodeSessionTitle(normalized);
+    return titleShapeLooksValid &&
       !/^(filter|collapse sidebar|search|install|dismiss|show \d+ more)$/i.test(normalized) &&
       !/^(try the slack app|recents\s+filter\b)/i.test(normalized) &&
       !/^islam(?:\s+islam|\s+intelmatix|$)/i.test(normalized) &&
       !/\binstall\s+dismiss\b/i.test(normalized);
+  }
+
+  function isCodeSessionGroupHeader(title) {
+    return /^(idle|running|ready|working|awaiting input|needs input|error|completed)$/i.test(Core.normalizeText(title));
+  }
+
+  function isShortCodeSessionTitle(title) {
+    const text = Core.normalizeText(title);
+    return text.length === 2 && /[a-z0-9]/i.test(text);
   }
 
   function isCodeMoreOptionsLabel(label) {
@@ -570,7 +584,8 @@
           continue;
         }
 
-        if (!sawRecents || hasLikelyCodeSessionDescendant(candidate)) {
+        const inRecentsArea = sawRecents || hasRecentsAncestor(candidate, root);
+        if (!inRecentsArea || hasLikelyCodeSessionDescendant(candidate)) {
           continue;
         }
 
@@ -1311,6 +1326,10 @@
 
       updatePanel();
       await sleep(180);
+    }
+
+    if (failed.length === 0) {
+      cleanupDecorations();
     }
 
     state.deleting = false;
