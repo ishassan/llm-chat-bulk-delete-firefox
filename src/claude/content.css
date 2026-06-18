@@ -133,6 +133,20 @@
   position: relative !important;
 }
 
+.cbd-chat-row[data-cbd-source="claude-web"][data-cbd-sidebar-selector-layout="true"] {
+  box-sizing: border-box !important;
+  overflow: visible !important;
+  padding-left: var(--cbd-selector-padding-left) !important;
+}
+
+.cbd-chat-row[data-cbd-source="claude-web"][data-cbd-sidebar-selector-layout="true"] > .cbd-selector {
+  position: absolute;
+  top: 50%;
+  left: var(--cbd-selector-left);
+  margin-right: 0;
+  transform: translateY(-50%);
+}
+
 .cbd-chat-row.cbd-deleting {
   opacity: 0.62 !important;
 }

@@ -113,6 +113,67 @@ test("content script only decorates Claude Web chat links, not sidebar navigatio
   }
 });
 
+test("content script aligns Claude Web sidebar selectors across indented rows", async () => {
+  const instance = new JSDOM(`
+    <body>
+      <aside aria-label="Sidebar">
+        <section aria-label="Starred">
+          <a href="/chat/111" data-left="32" style="padding-left: 16px"><span>Fix grammar and flow</span></a>
+          <a href="/chat/222" data-left="32" style="padding-left: 16px"><span>Fix grammar</span></a>
+        </section>
+        <section aria-label="Recents">
+          <a href="/chat/333" data-left="16" style="padding-left: 8px"><span>Apache Iceberg vs Delta Lake comparison</span></a>
+          <a href="/chat/444" data-left="32" style="padding-left: 16px"><span aria-hidden="true">...</span><span>Has fortinet been hacked</span></a>
+          <a href="/chat/555" data-left="16" style="padding-left: 8px"><span>Assessing application team data</span></a>
+        </section>
+      </aside>
+    </body>
+  `, {
+    pretendToBeVisual: true,
+    runScripts: "dangerously",
+    url: "https://claude.ai/new"
+  });
+
+  try {
+    const { HTMLElement } = instance.window;
+    HTMLElement.prototype.getBoundingClientRect = function getBoundingClientRect() {
+      const left = Number(this.dataset.left || 0);
+      return {
+        bottom: 40,
+        height: 32,
+        left,
+        right: left + 280,
+        top: 8,
+        width: 280,
+        x: left,
+        y: 8
+      };
+    };
+
+    instance.window.eval(await loadScript("src/claude/core.js"));
+    instance.window.eval(await loadScript("src/claude/content.js"));
+    await startSelecting(instance.window);
+
+    const rows = Array.from(instance.window.document.querySelectorAll("a[href^='/chat/']"));
+    await waitFor(instance.window, () => rows.every((row) => row.style.getPropertyValue("--cbd-selector-left")));
+
+    const selectorViewportLefts = rows.map((row) =>
+      Number(row.dataset.left) + Number.parseFloat(row.style.getPropertyValue("--cbd-selector-left"))
+    );
+    assert.deepEqual(selectorViewportLefts, [22, 22, 22, 22, 22]);
+    assert.deepEqual(
+      rows.map((row) => row.dataset.cbdSidebarSelectorLayout),
+      ["true", "true", "true", "true", "true"]
+    );
+    const contentViewportLefts = rows.map((row) =>
+      Number(row.dataset.left) + Number.parseFloat(row.style.getPropertyValue("--cbd-selector-padding-left"))
+    );
+    assert.deepEqual(contentViewportLefts, [58, 58, 58, 58, 58]);
+  } finally {
+    instance.window.close();
+  }
+});
+
 test("shift-click selects the visible range", async () => {
   const instance = new JSDOM(`
     <body>
