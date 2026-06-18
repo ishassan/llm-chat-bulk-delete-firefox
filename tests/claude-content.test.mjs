@@ -22,7 +22,14 @@ async function waitFor(window, predicate, timeoutMs = 1500) {
   throw new Error("timed out waiting for condition");
 }
 
-test("content script injects inline selectors and action panel on Claude pages", async () => {
+async function startSelecting(window) {
+  const toggleButton = await waitFor(window, () => window.document.querySelector("[data-cbd-action='toggle']"));
+  toggleButton.dispatchEvent(new window.MouseEvent("click", { bubbles: true, cancelable: true }));
+  await waitFor(window, () => window.document.querySelector("[data-cbd-action='select-all']")?.hidden === false);
+  await waitFor(window, () => window.document.querySelector(".cbd-selector"));
+}
+
+test("content script matches ChatGPT selection mode behavior on Claude pages", async () => {
   const instance = new JSDOM(`
     <body>
       <aside aria-label="Recents">
@@ -41,7 +48,22 @@ test("content script injects inline selectors and action panel on Claude pages",
     instance.window.eval(await loadScript("src/claude/content.js"));
     await new Promise((resolve) => instance.window.setTimeout(resolve, 250));
 
+    const { document } = instance.window;
+    assert.equal(document.querySelectorAll(".cbd-selector").length, 0);
+    assert.equal(document.querySelector("[data-cbd-action='toggle']")?.textContent, "Select chats");
+    assert.equal(document.querySelector("[data-cbd-action='select-all']")?.hidden, true);
+    assert.equal(document.querySelector("[data-cbd-action='clear']")?.hidden, true);
+    assert.equal(document.querySelector("[data-cbd-action='delete']")?.hidden, true);
+    assert.equal(document.querySelector(".cbd-status")?.textContent, "");
+
+    await startSelecting(instance.window);
+
     assert.equal(instance.window.document.querySelectorAll(".cbd-selector").length, 2);
+    assert.equal(document.querySelector("[data-cbd-action='toggle']")?.textContent, "Cancel");
+    assert.equal(document.querySelector("[data-cbd-action='select-all']")?.hidden, false);
+    assert.equal(document.querySelector("[data-cbd-action='clear']")?.hidden, false);
+    assert.equal(document.querySelector("[data-cbd-action='delete']")?.hidden, false);
+    assert.equal(document.querySelector(".cbd-status")?.textContent, "Select chats from the sidebar.");
     assert.equal(instance.window.document.querySelector(".cbd-panel [data-cbd-count]")?.textContent, "0 selected");
   } finally {
     instance.window.close();
@@ -77,7 +99,7 @@ test("content script only decorates Claude Web chat links, not sidebar navigatio
   try {
     instance.window.eval(await loadScript("src/claude/core.js"));
     instance.window.eval(await loadScript("src/claude/content.js"));
-    await new Promise((resolve) => instance.window.setTimeout(resolve, 250));
+    await startSelecting(instance.window);
 
     const selectors = Array.from(instance.window.document.querySelectorAll(".cbd-selector"));
     assert.equal(selectors.length, 2);
@@ -85,7 +107,7 @@ test("content script only decorates Claude Web chat links, not sidebar navigatio
       selectors.map((selector) => selector.getAttribute("aria-label")),
       ["Select Trip plan", "Select Work report"]
     );
-    assert.equal(instance.window.document.querySelector(".cbd-status")?.textContent, "2 visible chats");
+    assert.equal(instance.window.document.querySelector(".cbd-status")?.textContent, "Select chats from the sidebar.");
   } finally {
     instance.window.close();
   }
@@ -109,7 +131,7 @@ test("shift-click selects the visible range", async () => {
   try {
     instance.window.eval(await loadScript("src/claude/core.js"));
     instance.window.eval(await loadScript("src/claude/content.js"));
-    await new Promise((resolve) => instance.window.setTimeout(resolve, 250));
+    await startSelecting(instance.window);
 
     const selectors = instance.window.document.querySelectorAll(".cbd-selector");
     selectors[0].dispatchEvent(new instance.window.MouseEvent("click", { bubbles: true, cancelable: true }));
@@ -164,6 +186,7 @@ test("content script decorates Claude Web recents table rows", async () => {
     const { document, MouseEvent } = instance.window;
     instance.window.eval(await loadScript("src/claude/core.js"));
     instance.window.eval(await loadScript("src/claude/content.js"));
+    await startSelecting(instance.window);
     await waitFor(instance.window, () => document.querySelectorAll(".cbd-selector").length === 3);
 
     const selectors = Array.from(document.querySelectorAll(".cbd-selector"));
@@ -176,7 +199,7 @@ test("content script decorates Claude Web recents table rows", async () => {
     selectors[2].dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, shiftKey: true }));
 
     assert.equal(document.querySelector(".cbd-panel [data-cbd-count]")?.textContent, "3 selected");
-    assert.equal(document.querySelector(".cbd-status")?.textContent, "Selected 3 visible chats.");
+    assert.equal(document.querySelector(".cbd-status")?.textContent, "Selected range of 3 chats (2 new).");
   } finally {
     instance.window.close();
   }
@@ -254,6 +277,7 @@ test("content script deletes selected Claude Web chats via visible menus", async
 
     instance.window.eval(await loadScript("src/claude/core.js"));
     instance.window.eval(await loadScript("src/claude/content.js"));
+    await startSelecting(instance.window);
     await waitFor(instance.window, () => document.querySelectorAll(".cbd-selector").length === 3);
 
     const selectors = document.querySelectorAll(".cbd-selector");
@@ -352,6 +376,7 @@ test("content script deletes selected Claude Web recents table rows via row menu
 
     instance.window.eval(await loadScript("src/claude/core.js"));
     instance.window.eval(await loadScript("src/claude/content.js"));
+    await startSelecting(instance.window);
     await waitFor(instance.window, () => document.querySelectorAll(".cbd-selector").length === 3);
 
     const selectors = document.querySelectorAll(".cbd-selector");
@@ -456,6 +481,7 @@ test("content script deletes Web rows with dynamic sibling menus without clickin
 
     instance.window.eval(await loadScript("src/claude/core.js"));
     instance.window.eval(await loadScript("src/claude/content.js"));
+    await startSelecting(instance.window);
     await waitFor(instance.window, () => document.querySelectorAll(".cbd-selector").length === 2);
 
     const selectors = document.querySelectorAll(".cbd-selector");
@@ -515,6 +541,7 @@ test("content script deletes Claude Web sidebar chats through the conversations 
 
     instance.window.eval(await loadScript("src/claude/core.js"));
     instance.window.eval(await loadScript("src/claude/content.js"));
+    await startSelecting(instance.window);
     await waitFor(instance.window, () => document.querySelectorAll(".cbd-selector").length === 4);
 
     const selectors = document.querySelectorAll(".cbd-selector");
@@ -559,11 +586,11 @@ test("content script decorates unlinked Claude Code recents rows", async () => {
   try {
     instance.window.eval(await loadScript("src/claude/core.js"));
     instance.window.eval(await loadScript("src/claude/content.js"));
-    await new Promise((resolve) => instance.window.setTimeout(resolve, 250));
+    await startSelecting(instance.window);
 
     assert.equal(instance.window.document.querySelectorAll(".cbd-selector").length, 2);
     assert.equal(instance.window.document.querySelectorAll("button[aria-label^='More options'].cbd-chat-row").length, 0);
-    assert.equal(instance.window.document.querySelector(".cbd-status")?.textContent, "2 visible chats");
+    assert.equal(instance.window.document.querySelector(".cbd-status")?.textContent, "Select chats from the sidebar.");
   } finally {
     instance.window.close();
   }
@@ -599,6 +626,7 @@ test("content script decorates fresh Claude Code recents rows before menu contro
   try {
     instance.window.eval(await loadScript("src/claude/core.js"));
     instance.window.eval(await loadScript("src/claude/content.js"));
+    await startSelecting(instance.window);
     await waitFor(instance.window, () => instance.window.document.querySelectorAll(".cbd-selector").length === 3);
 
     const selectors = Array.from(instance.window.document.querySelectorAll(".cbd-selector"));
@@ -606,7 +634,7 @@ test("content script decorates fresh Claude Code recents rows before menu contro
       selectors.map((selector) => selector.getAttribute("aria-label")),
       ["Select Bulk delete test code", "Select Bulk delete test code", "Select Bulk delete test code"]
     );
-    assert.equal(instance.window.document.querySelector(".cbd-status")?.textContent, "3 visible chats");
+    assert.equal(instance.window.document.querySelector(".cbd-status")?.textContent, "Select chats from the sidebar.");
   } finally {
     instance.window.close();
   }
@@ -636,6 +664,7 @@ test("content script toggles Claude Code selectors when the row receives the che
     const { document, MouseEvent } = instance.window;
     instance.window.eval(await loadScript("src/claude/core.js"));
     instance.window.eval(await loadScript("src/claude/content.js"));
+    await startSelecting(instance.window);
     await waitFor(instance.window, () => document.querySelectorAll(".cbd-selector").length === 3);
 
     const rows = Array.from(document.querySelectorAll("[data-session-row]"));
@@ -758,6 +787,7 @@ test("content script deletes fresh Claude Code rows when menus appear on hover",
 
     instance.window.eval(await loadScript("src/claude/core.js"));
     instance.window.eval(await loadScript("src/claude/content.js"));
+    await startSelecting(instance.window);
     await waitFor(instance.window, () => document.querySelectorAll(".cbd-selector").length === 3);
 
     const selectors = document.querySelectorAll(".cbd-selector");
@@ -829,6 +859,7 @@ test("content script deletes selected Claude Code sessions through the sessions 
 
     instance.window.eval(await loadScript("src/claude/core.js"));
     instance.window.eval(await loadScript("src/claude/content.js"));
+    await startSelecting(instance.window);
     await waitFor(instance.window, () => document.querySelectorAll(".cbd-selector").length === 5);
 
     const rows = Array.from(document.querySelectorAll("[data-session-row]"));
@@ -893,7 +924,7 @@ test("content script ignores Claude Code controls and promotional cards", async 
   try {
     instance.window.eval(await loadScript("src/claude/core.js"));
     instance.window.eval(await loadScript("src/claude/content.js"));
-    await new Promise((resolve) => instance.window.setTimeout(resolve, 250));
+    await startSelecting(instance.window);
 
     const selectors = Array.from(instance.window.document.querySelectorAll(".cbd-selector"));
     assert.equal(selectors.length, 2);
@@ -901,7 +932,7 @@ test("content script ignores Claude Code controls and promotional cards", async 
       selectors.map((selector) => selector.getAttribute("aria-label")),
       ["Select First real session", "Select Second real session"]
     );
-    assert.equal(instance.window.document.querySelector(".cbd-status")?.textContent, "2 visible chats");
+    assert.equal(instance.window.document.querySelector(".cbd-status")?.textContent, "Select chats from the sidebar.");
   } finally {
     instance.window.close();
   }
@@ -935,6 +966,7 @@ test("content script keeps Claude Code selectors scoped to the sidebar inside la
     const { document, MouseEvent } = instance.window;
     instance.window.eval(await loadScript("src/claude/core.js"));
     instance.window.eval(await loadScript("src/claude/content.js"));
+    await startSelecting(instance.window);
     await waitFor(instance.window, () => document.querySelectorAll(".cbd-selector").length === 1);
 
     const selector = document.querySelector(".cbd-selector");
@@ -945,7 +977,7 @@ test("content script keeps Claude Code selectors scoped to the sidebar inside la
     await new Promise((resolve) => instance.window.setTimeout(resolve, 250));
     assert.equal(document.querySelectorAll(".cbd-selector").length, 1);
     assert.equal(document.querySelector(".cbd-panel [data-cbd-count]")?.textContent, "1 selected");
-    assert.equal(document.querySelector(".cbd-status")?.textContent, "1 visible chats");
+    assert.equal(document.querySelector(".cbd-status")?.textContent, "Select chats from the sidebar.");
   } finally {
     instance.window.close();
   }
@@ -1018,6 +1050,7 @@ test("content script deletes selected Claude Code sessions via paired menu butto
 
     instance.window.eval(await loadScript("src/claude/core.js"));
     instance.window.eval(await loadScript("src/claude/content.js"));
+    await startSelecting(instance.window);
     await waitFor(instance.window, () => document.querySelectorAll(".cbd-selector").length === 3);
 
     const selectors = document.querySelectorAll(".cbd-selector");
@@ -1101,6 +1134,7 @@ test("content script activates Claude Code menu items that require pointer event
 
     instance.window.eval(await loadScript("src/claude/core.js"));
     instance.window.eval(await loadScript("src/claude/content.js"));
+    await startSelecting(instance.window);
     await waitFor(instance.window, () => document.querySelectorAll(".cbd-selector").length === 1);
 
     document.querySelector(".cbd-selector").dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
@@ -1142,7 +1176,7 @@ test("content script reads the core API from the content-script global", async (
     instance.window.ClaudeBulkDeleteCore = undefined;
     vm.createContext(sandbox);
     vm.runInContext(await loadScript("src/claude/content.js"), sandbox);
-    await new Promise((resolve) => instance.window.setTimeout(resolve, 250));
+    await startSelecting(instance.window);
 
     assert.equal(instance.window.document.querySelectorAll(".cbd-selector").length, 1);
     assert.equal(instance.window.document.querySelector(".cbd-panel [data-cbd-count]")?.textContent, "0 selected");

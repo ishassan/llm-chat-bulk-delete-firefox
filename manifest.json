@@ -15,10 +15,10 @@
         "https://chat.openai.com/*"
       ],
       "js": [
-        "content.js"
+        "src/chatgpt/content.js"
       ],
       "css": [
-        "content.css"
+        "src/chatgpt/content.css"
       ],
       "run_at": "document_idle"
     },

@@ -32,6 +32,7 @@
     observer: null,
     panel: null,
     refreshTimer: null,
+    selecting: false,
     selected: new Map(),
     status: ""
   };
@@ -52,7 +53,7 @@
     });
     window.addEventListener("resize", scheduleRefresh, { passive: true });
     window.setInterval(scheduleRefresh, 2500);
-    scheduleRefresh();
+    updatePanel();
   }
 
   function cleanupLegacyUi() {
@@ -92,9 +93,10 @@
     const actions = document.createElement("div");
     actions.className = `${EXT}-actions`;
     actions.append(
-      makePanelButton("select-all", "Select all"),
-      makePanelButton("clear", "Clear"),
-      makePanelButton("delete", "Delete", `${EXT}-danger`)
+      makePanelButton("toggle", "Select chats", `${EXT}-primary`),
+      makePanelButton("select-all", "Select all", "", true),
+      makePanelButton("clear", "Clear", "", true),
+      makePanelButton("delete", "Delete", `${EXT}-danger`, true)
     );
 
     const status = document.createElement("div");
@@ -110,13 +112,16 @@
     return panel;
   }
 
-  function makePanelButton(action, label, className) {
+  function makePanelButton(action, label, className, hidden = false) {
     const button = document.createElement("button");
     button.type = "button";
     button.dataset.cbdAction = action;
     button.textContent = label;
     if (className) {
       button.className = className;
+    }
+    if (hidden) {
+      button.hidden = true;
     }
     return button;
   }
@@ -128,7 +133,13 @@
     }
 
     const action = button.dataset.cbdAction;
-    if (action === "select-all") {
+    if (action === "toggle") {
+      if (state.selecting) {
+        stopSelecting();
+      } else {
+        startSelecting();
+      }
+    } else if (action === "select-all") {
       selectAllVisible();
     } else if (action === "clear") {
       clearSelection();
@@ -137,8 +148,20 @@
     }
   }
 
+  function startSelecting() {
+    state.selecting = true;
+    setStatus("Select chats from the sidebar.");
+    scheduleRefresh();
+  }
+
+  function stopSelecting() {
+    state.selecting = false;
+    clearSelection();
+    cleanupDecorations();
+  }
+
   function scheduleRefresh() {
-    if (state.refreshTimer) {
+    if (!state.selecting || state.refreshTimer) {
       return;
     }
 
@@ -149,7 +172,7 @@
   }
 
   function refreshDecorations() {
-    if (!document.body) {
+    if (!state.selecting || !document.body) {
       return;
     }
 
@@ -1099,25 +1122,28 @@
         state.selected.set(toKey, getSelectionData(item));
         syncDecorationsForKey(toKey);
       }
-      setStatus("Range selection needs both chats to be visible.");
-      updatePanel();
+      setStatus("Range selection needs both chats to be loaded in the sidebar.");
       return;
     }
 
     const start = Math.min(fromIndex, toIndex);
     const end = Math.max(fromIndex, toIndex);
+    let added = 0;
+
     for (const item of items.slice(start, end + 1)) {
+      if (!state.selected.has(item.key)) {
+        added += 1;
+      }
       state.selected.set(item.key, getSelectionData(item));
     }
 
     syncAllDecorations();
-    setStatus(`Selected ${end - start + 1} visible chats.`);
-    updatePanel();
+    setStatus(`Selected range of ${end - start + 1} chat${end === start ? "" : "s"}${added > 0 ? ` (${added} new)` : ""}.`);
   }
 
   function selectAllVisible() {
     if (state.items.size === 0) {
-      setStatus("No visible Claude chats found.");
+      setStatus("No loaded chats found.");
       return;
     }
 
@@ -1130,8 +1156,7 @@
     }
 
     syncAllDecorations();
-    setStatus(added > 0 ? `Selected ${added} visible chats.` : "All visible chats are already selected.");
-    updatePanel();
+    setStatus(added > 0 ? `Selected ${added} loaded chat${added === 1 ? "" : "s"}.` : "All loaded chats are already selected.");
   }
 
   function clearSelection() {
@@ -1139,7 +1164,14 @@
     state.lastSelectedKey = null;
     syncAllDecorations();
     setStatus("");
-    updatePanel();
+  }
+
+  function cleanupDecorations() {
+    for (const row of document.querySelectorAll("[data-cbd-decorated='true']")) {
+      undecorateRow(row);
+    }
+
+    state.items = new Map();
   }
 
   function getSelectionData(item) {
@@ -1162,15 +1194,20 @@
       }
 
       const key = row.dataset.cbdKey;
-      row.classList.remove(`${EXT}-chat-row`, `${EXT}-selected`, `${EXT}-deleting`, `${EXT}-failed`);
-      row.removeAttribute("data-cbd-decorated");
-      row.removeAttribute("data-cbd-key");
-      row.removeAttribute("data-cbd-source");
-      selectorForRow(row)?.remove();
+      undecorateRow(row);
       if (key) {
         state.selected.delete(key);
       }
     }
+  }
+
+  function undecorateRow(row) {
+    row.classList.remove(`${EXT}-chat-row`, `${EXT}-selected`, `${EXT}-deleting`, `${EXT}-failed`);
+    row.removeAttribute("data-cbd-decorated");
+    row.removeAttribute("data-cbd-key");
+    row.removeAttribute("data-cbd-source");
+    row.removeAttribute("data-cbd-skip-next-selector-click");
+    selectorForRow(row)?.remove();
   }
 
   function syncDecorationsForKey(key) {
@@ -1205,14 +1242,26 @@
   function updatePanel() {
     const panel = ensurePanel();
     const count = state.selected.size;
-    const visibleCount = state.items.size;
+    const selecting = state.selecting;
+    const deleting = state.deleting;
 
-    panel.querySelector("[data-cbd-count]").textContent = `${count} selected`;
-    panel.querySelector("[data-cbd-action='select-all']").disabled = state.deleting || visibleCount === 0;
-    panel.querySelector("[data-cbd-action='clear']").disabled = state.deleting || count === 0;
-    panel.querySelector("[data-cbd-action='delete']").disabled = state.deleting || count === 0;
+    const countElement = panel.querySelector("[data-cbd-count]");
+    const toggleButton = panel.querySelector("[data-cbd-action='toggle']");
+    const selectAllButton = panel.querySelector("[data-cbd-action='select-all']");
+    const clearButton = panel.querySelector("[data-cbd-action='clear']");
+    const deleteButton = panel.querySelector("[data-cbd-action='delete']");
 
-    panel.querySelector("[data-cbd-status]").textContent = state.status || `${visibleCount} visible chats`;
+    countElement.textContent = `${count} selected`;
+    toggleButton.textContent = selecting ? "Cancel" : "Select chats";
+    toggleButton.disabled = deleting;
+    selectAllButton.hidden = !selecting;
+    clearButton.hidden = !selecting;
+    deleteButton.hidden = !selecting;
+    selectAllButton.disabled = deleting;
+    clearButton.disabled = deleting || count === 0;
+    deleteButton.disabled = deleting || count === 0;
+
+    panel.querySelector("[data-cbd-status]").textContent = state.status;
   }
 
   function setStatus(message) {
@@ -1230,13 +1279,11 @@
       .filter((item) => item.element && item.element.isConnected);
 
     if (items.length === 0 || state.deleting) {
-      setStatus("No selected visible chats found.");
-      clearSelection();
       return;
     }
 
     const confirmed = window.confirm(
-      `Delete ${items.length} selected Claude chat${items.length === 1 ? "" : "s"}?`
+      `Delete ${items.length} selected Claude chat${items.length === 1 ? "" : "s"}? This action cannot be undone by this extension.`
     );
     if (!confirmed) {
       return;
@@ -1275,8 +1322,6 @@
       const first = failed[0];
       setStatus(`Deleted ${deleted}. Failed ${failed.length}: ${truncate(first.item.title, 32)} (${first.error.message}).`);
     }
-
-    updatePanel();
   }
 
   async function deleteSelectedItem(item, codeSessionResolver) {

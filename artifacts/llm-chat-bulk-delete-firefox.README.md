@@ -11,8 +11,8 @@ This artifact contains the combined Firefox extension for ChatGPT, Claude Web, a
 
 ## Use
 
-- On ChatGPT, click `Select chats`, choose loaded sidebar chats, then click `Delete`.
-- On Claude Web and Claude Code, use the visible checkboxes, `Select all`, and `Delete` controls in the bottom-right panel.
-- Shift-select works for visible ranges on both ChatGPT and Claude.
+- On ChatGPT, Claude Web, and Claude Code, click `Select chats`, choose loaded sidebar chats or sessions, then click `Delete`.
+- Use `Select all` to select every currently loaded sidebar item.
+- Shift-select works for loaded ranges on all supported platforms.
 
 The extension only acts from the active site's page context and uses your existing browser session. It does not send data to third-party servers or use extension storage.
