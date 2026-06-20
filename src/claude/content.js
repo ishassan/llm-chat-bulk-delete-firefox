@@ -455,13 +455,18 @@
 
   function isLikelyCodeSessionTitle(title) {
     const normalized = normalizeText(title);
+    const comparable = comparablePlainText(normalized);
     if (isCodeSessionGroupHeader(normalized)) {
+      return false;
+    }
+    if (/^(pinned|drag to pin|pinned drag to pin)$/i.test(comparable)) {
       return false;
     }
 
     const titleShapeLooksValid = isLikelyFallbackTitle(normalized) || isShortCodeSessionTitle(normalized);
     return titleShapeLooksValid &&
       !/^(filter|collapse sidebar|search|install|dismiss|show \d+ more)$/i.test(normalized) &&
+      !/^(filter|collapse sidebar|search|install|dismiss|show \d+ more)$/i.test(comparable) &&
       !/^(try the slack app|recents\s+filter\b)/i.test(normalized) &&
       !/^islam(?:\s+islam|\s+intelmatix|$)/i.test(normalized) &&
       !/\binstall\s+dismiss\b/i.test(normalized);
@@ -493,6 +498,14 @@
 
   function normalizeComparableTitle(value) {
     return codeSessionTitle(value).toLowerCase().replace(/\s+/g, " ").trim();
+  }
+
+  function comparablePlainText(value) {
+    return normalizeText(value)
+      .toLowerCase()
+      .replace(/[^\w\s-]+/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
   }
 
   function collectUnlinkedSidebarItems(existingElements) {
@@ -851,11 +864,15 @@
   function isLikelyFallbackTitle(title) {
     const text = Core.normalizeText(title);
     const normalized = text.toLowerCase();
+    const comparable = comparablePlainText(text);
     if (text.length < 3 || text.length > 160) {
       return false;
     }
 
     if (/^(new chat|new session|routines|customize|settings|research preview|recents|sessions|chats|projects|claude|claude code|\.{3}|···|⋯)$/i.test(text)) {
+      return false;
+    }
+    if (/^(new chat|new session|routines|customize|settings|research preview|recents|sessions|chats|projects|claude|claude code|pinned|drag to pin|pinned drag to pin)$/i.test(comparable)) {
       return false;
     }
 

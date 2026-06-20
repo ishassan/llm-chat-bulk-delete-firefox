@@ -786,6 +786,51 @@ test("content script skips Claude Code recents group headers", async () => {
   }
 });
 
+test("content script skips Claude Code pinned and drag-to-pin controls", async () => {
+  const instance = new JSDOM(`
+    <body>
+      <aside aria-label="Sidebar">
+        <button>New session</button>
+        <section aria-label="Pinned">
+          <button>Pinned</button>
+          <button aria-label="More options for Pinned">...</button>
+          <div>Drag to pin</div>
+          <button aria-label="More options for Drag to pin">...</button>
+        </section>
+        <section aria-label="Recents">
+          <button>Recents</button>
+          <button>Debug Fireflies transcript processing issue</button>
+          <button aria-label="More options for Debug Fireflies transcript processing issue">...</button>
+          <button>Optimize large folder for Google Drive upload</button>
+          <button aria-label="More options for Optimize large folder for Google Drive upload">...</button>
+        </section>
+      </aside>
+    </body>
+  `, {
+    pretendToBeVisual: true,
+    runScripts: "dangerously",
+    url: "https://claude.ai/code"
+  });
+
+  try {
+    instance.window.eval(await loadScript("src/claude/core.js"));
+    instance.window.eval(await loadScript("src/claude/content.js"));
+    await startSelecting(instance.window);
+    await waitFor(instance.window, () => instance.window.document.querySelectorAll(".cbd-selector").length >= 2);
+
+    const selectors = Array.from(instance.window.document.querySelectorAll(".cbd-selector"));
+    assert.deepEqual(
+      selectors.map((selector) => selector.getAttribute("aria-label")),
+      [
+        "Select Debug Fireflies transcript processing issue",
+        "Select Optimize large folder for Google Drive upload"
+      ]
+    );
+  } finally {
+    instance.window.close();
+  }
+});
+
 test("content script does not decorate emptied Claude Code groups after delete", async () => {
   const instance = new JSDOM(`
     <body>
